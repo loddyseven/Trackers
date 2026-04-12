@@ -65,17 +65,9 @@ class ChatPanelService:
                         text="Список адресов",
                         callback_data="panel_list",
                     ),
-                ],
-                [
                     InlineKeyboardButton(
                         text="История",
                         callback_data="panel_history",
-                    ),
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="CSV",
-                        callback_data="panel_csv",
                     ),
                 ],
                 [
