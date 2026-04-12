@@ -29,7 +29,6 @@ HELP_TEXT = """
 <code>/pause &lt;id&gt;</code> - поставить на паузу
 <code>/resume &lt;id&gt;</code> - снять с паузы
 <code>/rename &lt;id&gt; &lt;label&gt;</code> - поменять имя кошелька
-<code>/cancel</code> - выйти
 """.strip()
 
 
@@ -97,14 +96,6 @@ def build_router(
         await panel.cleanup_user_message(message)
         await state.clear()
         await show_panel(message, HELP_TEXT)
-
-    @router.message(Command("cancel"))
-    async def cancel_handler(message: Message, state: FSMContext) -> None:
-        if await deny_if_needed(message):
-            return
-        await panel.cleanup_user_message(message)
-        await state.clear()
-        await show_panel(message, "<i>Пошаговое добавление отменено.</i>")
 
     @router.message(Command("list"))
     async def list_handler(message: Message, state: FSMContext) -> None:

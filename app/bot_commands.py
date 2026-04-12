@@ -15,6 +15,5 @@ def build_bot_commands() -> list[BotCommand]:
         BotCommand(command="resume", description="Снять адрес с паузы"),
         BotCommand(command="rename", description="Поменять имя кошелька"),
         BotCommand(command="remove", description="Удалить адрес"),
-        BotCommand(command="cancel", description="Выйти"),
         BotCommand(command="help", description="Показать все команды"),
     ]

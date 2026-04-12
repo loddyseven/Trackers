@@ -31,7 +31,6 @@ Trackers monitors wallet activity, sends clean on-chain alerts, keeps recent his
 - `/pause <id>` - поставить на паузу
 - `/resume <id>` - снять с паузы
 - `/rename <id> <label>` - поменять имя кошелька
-- `/cancel` - выйти
 
 Examples:
 

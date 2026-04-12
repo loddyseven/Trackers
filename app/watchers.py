@@ -145,6 +145,7 @@ class WatcherService:
                     InlineKeyboardButton(
                         text=button_label,
                         url=event.explorer_url,
+                        style="success",
                     )
                 ]
             ]
