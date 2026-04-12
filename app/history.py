@@ -155,10 +155,17 @@ class WalletHistoryService:
     def _render_event_line(self, event: ChainEvent) -> str:
         amount_part = self._format_amount_part(event)
         counterparty = shorten_address(event.counterparty or "unknown")
-        return "<code>{0}</code> | <b>{1}</b> | <code>{2}</code> | <code>{3}</code>".format(
+        amount_markup = "<code>{0}</code>".format(html.quote(amount_part))
+        if event.explorer_url:
+            amount_markup = '<a href="{0}"><b>{1}</b></a>'.format(
+                html.quote(event.explorer_url),
+                html.quote(amount_part),
+            )
+
+        return "<code>{0}</code> | <b>{1}</b> | {2} | <code>{3}</code>".format(
             html.quote(event.occurred_at),
             html.quote(event.direction.upper()),
-            html.quote(amount_part),
+            amount_markup,
             html.quote(counterparty),
         )
 
