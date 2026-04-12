@@ -14,7 +14,13 @@ from app.db import Database, DuplicateWatchError
 from app.history import WalletHistoryService
 from app.models import Watch
 from app.panel import ChatPanelService
-from app.validators import ValidationError, normalize_address, normalize_label, normalize_network
+from app.validators import (
+    ValidationError,
+    detect_network_by_address,
+    normalize_address,
+    normalize_label,
+    normalize_network,
+)
 
 
 NETWORK_PROMPT = "Выбери сеть кнопкой ниже или напиши <code>ton</code> / <code>trc20</code>."
@@ -22,8 +28,8 @@ HELP_TEXT = """
 <b><i>Команды</i></b>
 /add - добавить адрес
 /list - список отслеживаемых адресов
-/history &lt;id&gt; - история, суммы и крупные транзакции
-/csv &lt;id&gt; &lt;1-100&gt; - CSV таблица с нужным числом последних транзакций
+/history &lt;id|address&gt; - история, суммы и крупные транзакции
+/csv &lt;id|address&gt; &lt;1-100&gt; - CSV таблица с нужным числом последних транзакций
 /clear - очистить уведомления бота
 /remove &lt;id&gt; - удалить адрес
 /pause &lt;id&gt; - поставить на паузу
@@ -157,7 +163,7 @@ def build_router(
         await panel.show(
             callback.bot,
             callback.message.chat.id,
-            "Пришли <b>номер строки из списка</b> или <b>id</b> кошелька для истории.",
+            "Пришли <b>номер строки</b>, <b>id</b> или любой адрес <b>TON/TRC20</b> для истории.",
             reply_markup=panel.build_back_markup(),
         )
 
@@ -176,7 +182,7 @@ def build_router(
         await panel.show(
             callback.bot,
             callback.message.chat.id,
-            "Пришли <b>id или номер строки</b>, а затем опционально число строк.\n"
+            "Пришли <b>id</b>, <b>номер строки</b> или <b>адрес</b>, а затем опционально число строк.\n"
             "Пример: <code>1 25</code>",
             reply_markup=panel.build_back_markup(),
         )
@@ -264,16 +270,16 @@ def build_router(
         if not token:
             await show_panel(
                 message,
-                "Пришли <b>номер строки из списка</b> или <b>id</b> кошелька для истории.",
+                "Пришли <b>номер строки</b>, <b>id</b> или любой адрес <b>TON/TRC20</b> для истории.",
                 reply_markup=panel.build_back_markup(),
             )
             return
 
-        watch = db.resolve_watch_reference(message.chat.id, token)
+        watch = _resolve_watch_reference_or_address(message.chat.id, token, db)
         if not watch:
             await show_panel(
                 message,
-                "Адрес не найден. Пришли номер из <b>/list</b> или внутренний <b>id</b>.",
+                "Не удалось найти кошелек. Пришли номер из <b>/list</b>, внутренний <b>id</b> или любой адрес <b>TON/TRC20</b>.",
                 reply_markup=panel.build_back_markup(),
             )
             return
@@ -301,17 +307,17 @@ def build_router(
         if not parts or len(parts) > 2:
             await show_panel(
                 message,
-                "Пришли <b>id или номер строки</b>, а затем опционально число строк.\n"
+                "Пришли <b>id</b>, <b>номер строки</b> или <b>адрес</b>, а затем опционально число строк.\n"
                 "Пример: <code>1 25</code>",
                 reply_markup=panel.build_back_markup(),
             )
             return
 
-        watch = db.resolve_watch_reference(message.chat.id, parts[0])
+        watch = _resolve_watch_reference_or_address(message.chat.id, parts[0], db)
         if not watch:
             await show_panel(
                 message,
-                "Адрес не найден. Пришли номер из <b>/list</b> или внутренний <b>id</b>.",
+                "Не удалось найти кошелек. Пришли номер из <b>/list</b>, внутренний <b>id</b> или любой адрес <b>TON/TRC20</b>.",
                 reply_markup=panel.build_back_markup(),
             )
             return
@@ -374,7 +380,8 @@ def build_router(
             db=db,
             command=command,
             panel=panel,
-            usage="Используй формат: /history <номер из /list или id>",
+            usage="Используй формат: /history <номер из /list, id или адрес>",
+            allow_external_address=True,
         )
         if not watch:
             return
@@ -402,17 +409,19 @@ def build_router(
             db=db,
             command=command,
             panel=panel,
-            usage="Используй формат: <code>/csv &lt;номер из /list или id&gt; &lt;1-100&gt;</code>",
+            usage="Используй формат: <code>/csv &lt;номер из /list, id или адрес&gt; &lt;1-100&gt;</code>",
+            allow_external_address=True,
         )
         if not watch:
             return
 
         csv_count = _parse_csv_count(command)
         if csv_count is None:
+            csv_target = watch.address if watch.id <= 0 else str(watch.id)
             await show_panel(
                 message,
                 "Количество строк должно быть от <code>1</code> до <code>100</code>.\n"
-                "Пример: <code>/csv {0} 25</code>".format(watch.id),
+                "Пример: <code>/csv {0} 25</code>".format(html.quote(csv_target)),
             )
             return
 
@@ -698,22 +707,66 @@ async def _resolve_watch_for_command(
     command: CommandObject,
     panel: ChatPanelService,
     usage: str,
+    allow_external_address: bool = False,
 ) -> Optional[Watch]:
     token = _extract_reference(command)
     if not token:
         await panel.show(message.bot, message.chat.id, usage)
         return None
 
-    watch = db.resolve_watch_reference(message.chat.id, token)
+    watch = _resolve_watch_reference_or_address(
+        chat_id=message.chat.id,
+        token=token,
+        db=db,
+        allow_external_address=allow_external_address,
+    )
     if watch:
         return watch
 
     await panel.show(
         message.bot,
         message.chat.id,
-        "Адрес не найден. Используй номер строки из <code>/list</code> или внутренний <code>id</code>.",
+        (
+            "Кошелек не найден. Используй номер строки из <code>/list</code>, внутренний <code>id</code>"
+            " или адрес <code>TON/TRC20</code>."
+            if allow_external_address
+            else "Адрес не найден. Используй номер строки из <code>/list</code> или внутренний <code>id</code>."
+        ),
     )
     return None
+
+
+def _resolve_watch_reference_or_address(
+    chat_id: int,
+    token: str,
+    db: Database,
+    allow_external_address: bool = True,
+) -> Optional[Watch]:
+    watch = db.resolve_watch_reference(chat_id, token)
+    if watch:
+        return watch
+
+    if not allow_external_address:
+        return None
+
+    try:
+        network = detect_network_by_address(token)
+        address = normalize_address(network, token)
+    except ValidationError:
+        return None
+
+    return Watch(
+        id=0,
+        chat_id=chat_id,
+        network=network,
+        address=address,
+        label=address,
+        is_active=False,
+        created_at="",
+        updated_at="",
+        last_cursor=None,
+        last_checked_at=None,
+    )
 
 
 async def _try_create_watch(

@@ -83,9 +83,8 @@ class WalletHistoryService:
             lines.append("<i>Недавних событий пока не найдено.</i>")
 
         lines.append("")
-        lines.append(
-            "<i>CSV:</i> <code>/csv {0} 5</code> или <code>/csv {0} 20</code>".format(watch.id)
-        )
+        csv_target = watch.address if watch.id <= 0 else str(watch.id)
+        lines.append("<i>CSV:</i> <code>/csv {0} 5</code> или <code>/csv {0} 20</code>".format(csv_target))
         return "\n".join(lines)
 
     def build_csv_export(

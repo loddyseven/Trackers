@@ -40,6 +40,15 @@ def normalize_address(network: str, value: str) -> str:
     raise ValidationError("Неизвестная сеть.")
 
 
+def detect_network_by_address(value: str) -> str:
+    address = value.strip()
+    if TON_FRIENDLY_RE.match(address) or TON_RAW_RE.match(address):
+        return "ton"
+    if TRON_RE.match(address):
+        return "trc20"
+    raise ValidationError("Не удалось определить сеть по адресу. Поддерживаются только TON и TRC20.")
+
+
 def normalize_label(value: str, address: str) -> str:
     label = value.strip()
     if not label or label == "-":
