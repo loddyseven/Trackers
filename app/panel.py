@@ -64,28 +64,24 @@ class ChatPanelService:
                     InlineKeyboardButton(
                         text="Список адресов",
                         callback_data="panel_list",
-                        style="primary",
                     ),
                 ],
                 [
                     InlineKeyboardButton(
                         text="История",
                         callback_data="panel_history",
-                        style="primary",
                     ),
                 ],
                 [
                     InlineKeyboardButton(
                         text="CSV",
                         callback_data="panel_csv",
-                        style="primary",
                     ),
                 ],
                 [
                     InlineKeyboardButton(
                         text="Назад в меню",
                         callback_data="panel_menu",
-                        style="primary",
                     ),
                 ],
                 [
@@ -106,7 +102,6 @@ class ChatPanelService:
                     InlineKeyboardButton(
                         text="Назад в меню",
                         callback_data="panel_menu",
-                        style="primary",
                     ),
                 ],
                 [
@@ -127,19 +122,16 @@ class ChatPanelService:
                     InlineKeyboardButton(
                         text="TON",
                         callback_data="pick_network:ton",
-                        style="success",
                     ),
                     InlineKeyboardButton(
                         text="TRC20",
                         callback_data="pick_network:trc20",
-                        style="success",
                     ),
                 ],
                 [
                     InlineKeyboardButton(
                         text="Назад в меню",
                         callback_data="panel_menu",
-                        style="primary",
                     ),
                 ],
                 [

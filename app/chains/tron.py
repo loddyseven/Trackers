@@ -9,6 +9,8 @@ from app.utils import format_timestamp, format_units, parse_decimal, shorten_add
 
 
 class TronGridClient:
+    PAGE_LIMIT = 200
+
     def __init__(self, base_url: str, api_key: Optional[str] = None) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -19,6 +21,47 @@ class TronGridClient:
         address: str,
         limit: int = 20,
     ) -> List[ChainEvent]:
+        payload = await self._request_page(
+            session=session,
+            address=address,
+            limit=min(limit, self.PAGE_LIMIT),
+        )
+        return self._parse_events(payload, address)[:limit]
+
+    async def fetch_all_activity(
+        self,
+        session: aiohttp.ClientSession,
+        address: str,
+    ) -> List[ChainEvent]:
+        events: List[ChainEvent] = []
+        fingerprint: Optional[str] = None
+
+        while True:
+            payload = await self._request_page(
+                session=session,
+                address=address,
+                limit=self.PAGE_LIMIT,
+                fingerprint=fingerprint,
+            )
+            page_events = self._parse_events(payload, address)
+            if not page_events:
+                break
+
+            events.extend(page_events)
+            meta = payload.get("meta") or {}
+            fingerprint = meta.get("fingerprint")
+            if not fingerprint or len(page_events) < self.PAGE_LIMIT:
+                break
+
+        return events
+
+    async def _request_page(
+        self,
+        session: aiohttp.ClientSession,
+        address: str,
+        limit: int,
+        fingerprint: Optional[str] = None,
+    ) -> dict:
         url = "{0}/v1/accounts/{1}/transactions/trc20".format(self.base_url, address)
         headers = {}
         if self.api_key:
@@ -27,10 +70,13 @@ class TronGridClient:
             "limit": limit,
             "only_confirmed": "true",
         }
+        if fingerprint:
+            params["fingerprint"] = fingerprint
         async with session.get(url, headers=headers, params=params) as response:
             response.raise_for_status()
-            payload = await response.json()
+            return await response.json()
 
+    def _parse_events(self, payload: dict, address: str) -> List[ChainEvent]:
         events = []
         for item in payload.get("data", []):
             tx_id = item.get("transaction_id")

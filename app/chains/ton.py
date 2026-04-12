@@ -11,6 +11,8 @@ from app.utils import format_timestamp, format_ton_amount, format_units, parse_d
 
 
 class TonApiClient:
+    PAGE_LIMIT = 100
+
     def __init__(self, base_url: str, api_key: Optional[str] = None) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -21,14 +23,59 @@ class TonApiClient:
         address: str,
         limit: int = 20,
     ) -> List[ChainEvent]:
+        payload = await self._request_page(
+            session=session,
+            address=address,
+            limit=min(limit, self.PAGE_LIMIT),
+        )
+        return self._parse_events(payload, address)[:limit]
+
+    async def fetch_all_activity(
+        self,
+        session: aiohttp.ClientSession,
+        address: str,
+    ) -> List[ChainEvent]:
+        events: List[ChainEvent] = []
+        before_lt: Optional[int] = None
+
+        while True:
+            payload = await self._request_page(
+                session=session,
+                address=address,
+                limit=self.PAGE_LIMIT,
+                before_lt=before_lt,
+            )
+            page_events = self._parse_events(payload, address)
+            if not page_events:
+                break
+
+            events.extend(page_events)
+            next_from = payload.get("next_from")
+            if not next_from or int(next_from) == 0 or len(page_events) < self.PAGE_LIMIT:
+                break
+            before_lt = int(next_from)
+
+        return events
+
+    async def _request_page(
+        self,
+        session: aiohttp.ClientSession,
+        address: str,
+        limit: int,
+        before_lt: Optional[int] = None,
+    ) -> dict:
         url = "{0}/v2/accounts/{1}/events".format(self.base_url, quote(address, safe=""))
         headers = {}
         if self.api_key:
             headers["Authorization"] = "Bearer {0}".format(self.api_key)
-        async with session.get(url, headers=headers, params={"limit": limit}) as response:
+        params = {"limit": limit}
+        if before_lt is not None:
+            params["before_lt"] = before_lt
+        async with session.get(url, headers=headers, params=params) as response:
             response.raise_for_status()
-            payload = await response.json()
+            return await response.json()
 
+    def _parse_events(self, payload: Dict, address: str) -> List[ChainEvent]:
         events = []
         for item in payload.get("events", []):
             event_id = item.get("event_id") or str(item.get("lt") or "")

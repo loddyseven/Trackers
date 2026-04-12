@@ -33,6 +33,15 @@ class WalletHistoryService:
                 return await self.tron_client.fetch_recent_activity(session, watch.address, limit=limit)
         return []
 
+    async def fetch_history_events(self, watch: Watch) -> List[ChainEvent]:
+        timeout = aiohttp.ClientTimeout(total=60)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            if watch.network == "ton":
+                return await self.ton_client.fetch_all_activity(session, watch.address)
+            if watch.network == "trc20":
+                return await self.tron_client.fetch_all_activity(session, watch.address)
+        return []
+
     def build_history_text(
         self,
         watch: Watch,
@@ -56,7 +65,7 @@ class WalletHistoryService:
                 html.quote(watch.label),
             ),
             "<code>{0}</code>".format(html.quote(watch.address)),
-            "<i>Окно:</i> последние <b>{0}</b> событий".format(len(ordered)),
+            "<i>Событий найдено:</i> <b>{0}</b>".format(len(ordered)),
             "<i>Входящие:</i> <b>{0}</b> tx | <code>{1}</code>".format(
                 len(incoming),
                 html.quote(self._format_totals(incoming)),
@@ -83,8 +92,10 @@ class WalletHistoryService:
             lines.append("<i>Недавних событий пока не найдено.</i>")
 
         lines.append("")
-        csv_target = watch.address if watch.id <= 0 else str(watch.id)
-        lines.append("<i>CSV:</i> <code>/csv {0} 5</code> или <code>/csv {0} 20</code>".format(csv_target))
+        if watch.id > 0:
+            lines.append("<i>CSV:</i> кнопка <b>CSV</b> или <code>/csv {0} 20</code>".format(watch.id))
+        else:
+            lines.append("<i>CSV:</i> кнопка <b>CSV</b> или команда <code>/csv &lt;address&gt; 20</code>")
         return "\n".join(lines)
 
     def build_csv_export(

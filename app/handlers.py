@@ -286,7 +286,7 @@ def build_router(
 
         await state.clear()
         try:
-            events = await history_service.fetch_recent_events(watch, limit=20)
+            events = await history_service.fetch_history_events(watch)
         except aiohttp.ClientResponseError as exc:
             await show_panel(message, _render_api_error(watch, exc.status))
             return
@@ -387,7 +387,7 @@ def build_router(
             return
 
         try:
-            events = await history_service.fetch_recent_events(watch, limit=20)
+            events = await history_service.fetch_history_events(watch)
         except aiohttp.ClientResponseError as exc:
             await show_panel(message, _render_api_error(watch, exc.status))
             return
