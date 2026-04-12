@@ -101,13 +101,6 @@ class ChatPanelService:
                         callback_data="panel_menu",
                     ),
                 ],
-                [
-                    InlineKeyboardButton(
-                        text="Очистить уведомления",
-                        callback_data="clear_alerts",
-                        style="danger",
-                    ),
-                ],
             ]
         )
 
@@ -129,13 +122,6 @@ class ChatPanelService:
                     InlineKeyboardButton(
                         text="Назад в меню",
                         callback_data="panel_menu",
-                    ),
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="Очистить уведомления",
-                        callback_data="clear_alerts",
-                        style="danger",
                     ),
                 ],
             ]
@@ -161,13 +147,6 @@ class ChatPanelService:
                         callback_data="panel_menu",
                     ),
                 ],
-                [
-                    InlineKeyboardButton(
-                        text="Очистить уведомления",
-                        callback_data="clear_alerts",
-                        style="danger",
-                    ),
-                ],
             ]
         )
 
@@ -191,13 +170,6 @@ class ChatPanelService:
                         callback_data="panel_menu",
                     ),
                 ],
-                [
-                    InlineKeyboardButton(
-                        text="Очистить уведомления",
-                        callback_data="clear_alerts",
-                        style="danger",
-                    ),
-                ],
             ]
         )
 
@@ -210,13 +182,6 @@ class ChatPanelService:
                         text="Назад в меню",
                         callback_data="panel_menu",
                     ),
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="Очистить уведомления",
-                        callback_data="clear_alerts",
-                        style="danger",
-                    )
                 ],
             ]
         )
@@ -240,13 +205,6 @@ class ChatPanelService:
                         text="Назад в меню",
                         callback_data="panel_menu",
                     ),
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="Очистить уведомления",
-                        callback_data="clear_alerts",
-                        style="danger",
-                    )
                 ],
             ]
         )
