@@ -78,7 +78,7 @@ def build_router(
         await panel.show(
             callback.bot,
             callback.message.chat.id,
-            "<b>Уведомления очищены:</b> <code>{0}</code>".format(removed),
+            HELP_TEXT,
         )
 
     @router.message(CommandStart())
@@ -203,7 +203,7 @@ def build_router(
             db=db,
             chat_id=message.chat.id,
         )
-        await show_panel(message, "<b>Уведомления очищены:</b> <code>{0}</code>".format(removed))
+        await show_panel(message, HELP_TEXT)
 
     @router.message(Command("remove"))
     async def remove_handler(message: Message, state: FSMContext, command: CommandObject) -> None:
