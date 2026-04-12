@@ -1,0 +1,1 @@
+"""Telegram wallet watcher bot."""
