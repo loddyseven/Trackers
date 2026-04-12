@@ -17,5 +17,8 @@ def build_bot(settings: Settings) -> Bot:
     return Bot(
         token=settings.telegram_bot_token,
         session=session,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        default=DefaultBotProperties(
+            parse_mode=ParseMode.HTML,
+            link_preview_is_disabled=True,
+        ),
     )
