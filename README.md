@@ -1,20 +1,26 @@
 # Trackers
 
-Telegram-бот для отслеживания on-chain активности по кошелькам в сетях `TON` и `TRC20`.
+[![License: MIT](https://img.shields.io/badge/license-MIT-0f766e.svg)](./LICENSE)
+[![Python](https://img.shields.io/badge/python-3.9%2B-2563eb.svg)](#quick-start)
+[![Networks](https://img.shields.io/badge/networks-TON%20%7C%20TRC20-111827.svg)](#features)
 
-## Возможности
+Clean Telegram wallet watcher for `TON` and `TRC20`.
 
-- добавление адресов прямо из Telegram
-- подписи для кошельков
-- пауза и возобновление отслеживания
-- история по кошельку: входящие, исходящие, крупные движения
-- экспорт `CSV` по последним транзакциям с выбором количества `1-100`
-- inline-кнопка в explorer для новых алертов
-- автоочистка уведомлений и ручная очистка через `/clear`
-- хранение состояния в `SQLite`
-- работа с Telegram Bot API через `IPv4`
+Trackers monitors wallet activity, sends clean on-chain alerts, keeps recent history, exports CSV reports, and avoids chat spam with a reusable control panel inside Telegram.
 
-## Команды
+## Features
+
+- add wallets directly from Telegram
+- assign labels to wallets for readable alerts
+- pause, resume, rename, and remove trackers without touching the server
+- view wallet history with incoming, outgoing, and large transaction summaries
+- export `CSV` with any number of recent transactions from `1` to `100`
+- open each detected transaction in the explorer through inline buttons
+- auto-delete alert messages and clear notifications manually via `/clear`
+- use `SQLite` for lightweight local storage
+- connect to Telegram Bot API over `IPv4`
+
+## Commands
 
 - `/add` - добавить адрес
 - `/list` - список отслеживаемых адресов
@@ -27,7 +33,7 @@ Telegram-бот для отслеживания on-chain активности п
 - `/rename <id> <label>` - поменять имя кошелька
 - `/cancel` - выйти
 
-Примеры:
+Examples:
 
 ```bash
 /add ton EQ...
@@ -38,23 +44,30 @@ Telegram-бот для отслеживания on-chain активности п
 /rename 1 Main wallet
 ```
 
-## Стек
+## Supported Chains
+
+### TON
+
+- source: `TonAPI account events`
+- notifications include explorer links to the exact parsed transaction
+- public access may hit rate limits without `TONAPI_KEY`
+
+### TRC20
+
+- source: `TronGrid TRC20 transaction history`
+- suitable for `USDT TRC20` and other tracked token transfers
+- confirmed transactions are used for cleaner alerts
+
+## Stack
 
 - `Python 3.9+`
 - `aiogram`
 - `aiohttp`
 - `SQLite`
 
-## Источники данных
+## Quick Start
 
-- `TON`: `TonAPI` account events
-- `TRC20`: `TronGrid` TRC20 transaction history
-
-Для стабильной работы `TON` желательно указать `TONAPI_KEY`, иначе можно упираться в rate limit публичного доступа.
-
-## Быстрый старт
-
-1. Создай виртуальное окружение и установи зависимости:
+1. Create a virtual environment and install dependencies:
 
 ```bash
 python3 -m venv .venv
@@ -62,15 +75,15 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-2. Создай `.env` на основе `.env.example`.
+2. Create `.env` based on `.env.example`.
 
-Минимально нужен:
+Minimum required:
 
 ```env
 TELEGRAM_BOT_TOKEN=...
 ```
 
-Рекомендуемые переменные:
+Recommended:
 
 ```env
 TONAPI_KEY=...
@@ -80,40 +93,39 @@ POLL_INTERVAL_SECONDS=60
 ALERT_AUTO_DELETE_SECONDS=60
 ```
 
-3. Запусти бота:
+3. Start the bot:
 
 ```bash
 python3 main.py
 ```
 
-`main.py` сам подхватывает `.env` из корня проекта.
+## How It Works
 
-## Как это работает
+- on first wallet add, the bot skips old activity and starts alerting only on new events
+- each Telegram chat keeps its own tracked wallet list
+- alerts are sent as separate messages, while the main panel is edited in place to reduce spam
+- `CSV` exports and watcher alerts can be cleaned with `/clear`
 
-- при первом добавлении адреса бот пропускает старую историю и начинает слать только новые события
-- каждый чат хранит свой собственный список отслеживаемых кошельков
-- новые on-chain уведомления отправляются отдельно, а основная панель бота переиспользуется без спама
-
-## Структура проекта
+## Project Structure
 
 ```text
 app/
-  chains/      # клиенты TonAPI и TronGrid
+  chains/      # TonAPI and TronGrid clients
   bot_commands.py
   config.py
   db.py
-  handlers.py  # Telegram-команды и UI
-  history.py   # история и CSV
-  panel.py     # верхняя панель и inline-кнопки
-  watchers.py  # polling и алерты
-main.py        # точка входа
+  handlers.py  # Telegram commands and UI
+  history.py   # history and CSV exports
+  panel.py     # persistent panel and inline buttons
+  watchers.py  # polling and alert delivery
+main.py        # entry point
 ```
 
-## Деплой
+## Deployment
 
-Бот уже адаптирован под запуск на VPS через `systemd`.
+The bot is ready to run on a VPS with `systemd`.
 
-Базовый сценарий:
+Basic flow:
 
 ```bash
 python3 -m venv /opt/autolocal/.venv
@@ -121,14 +133,14 @@ python3 -m venv /opt/autolocal/.venv
 python3 main.py
 ```
 
-## Безопасность
+## Security
 
-- `.env`, базы данных и логи не должны попадать в git
-- токены и ключи нужно хранить только в окружении или в локальном `.env`
-- перед публикацией репозитория проверь, что в истории коммитов нет секретов
+- never commit `.env`, databases, or logs
+- store bot tokens and API keys only in environment variables or local `.env`
+- review commit history before making the repository public
 
-## Ограничения
+## Limitations
 
-- `TON` через публичный `TonAPI` может отвечать `429 Too Many Requests`
-- polling-модель всегда дает небольшую задержку относительно реальной транзакции
-- для почти realtime-алертов лучше переходить на streaming/websocket подход
+- public `TonAPI` access can return `429 Too Many Requests`
+- polling introduces a small delay compared with real-time chain activity
+- for near real-time alerts, a streaming or websocket-based architecture is better
