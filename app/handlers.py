@@ -17,18 +17,21 @@ from app.panel import ChatPanelService
 from app.validators import ValidationError, normalize_address, normalize_label, normalize_network
 
 
-NETWORK_PROMPT = "Какая сеть? Напиши <code>ton</code> или <code>trc20</code>."
+NETWORK_PROMPT = "Выбери сеть кнопкой ниже или напиши <code>ton</code> / <code>trc20</code>."
 HELP_TEXT = """
 <b><i>Команды</i></b>
-<code>/add</code> - добавить адрес
-<code>/list</code> - список отслеживаемых адресов
-<code>/history &lt;id&gt;</code> - история, суммы и крупные транзакции
-<code>/csv &lt;id&gt; &lt;1-100&gt;</code> - CSV таблица с нужным числом последних транзакций
-<code>/clear</code> - очистить уведомления бота
-<code>/remove &lt;id&gt;</code> - удалить адрес
-<code>/pause &lt;id&gt;</code> - поставить на паузу
-<code>/resume &lt;id&gt;</code> - снять с паузы
-<code>/rename &lt;id&gt; &lt;label&gt;</code> - поменять имя кошелька
+/add - добавить адрес
+/list - список отслеживаемых адресов
+/history &lt;id&gt; - история, суммы и крупные транзакции
+/csv &lt;id&gt; &lt;1-100&gt; - CSV таблица с нужным числом последних транзакций
+/clear - очистить уведомления бота
+/remove &lt;id&gt; - удалить адрес
+/pause &lt;id&gt; - поставить на паузу
+/resume &lt;id&gt; - снять с паузы
+/rename &lt;id&gt; &lt;label&gt; - поменять имя кошелька
+
+<b><i>Быстрые действия</i></b>
+Используй кнопки ниже, чтобы не вводить команды вручную.
 """.strip()
 
 
@@ -36,6 +39,11 @@ class AddWatchStates(StatesGroup):
     network = State()
     address = State()
     label = State()
+
+
+class QuickActionStates(StatesGroup):
+    history_reference = State()
+    csv_reference = State()
 
 
 def build_router(
@@ -56,8 +64,143 @@ def build_router(
         await panel.show(message.bot, message.chat.id, "Этот чат не авторизован для работы с ботом.")
         return True
 
-    async def show_panel(message: Message, text: str, force_new: bool = False) -> None:
-        await panel.show(message.bot, message.chat.id, text, force_new=force_new)
+    async def show_panel(
+        message: Message,
+        text: str,
+        force_new: bool = False,
+        reply_markup=None,
+    ) -> None:
+        await panel.show(
+            message.bot,
+            message.chat.id,
+            text,
+            force_new=force_new,
+            reply_markup=reply_markup,
+        )
+
+    @router.callback_query(F.data == "panel_menu")
+    async def menu_callback(callback: CallbackQuery, state: FSMContext) -> None:
+        if not callback.message:
+            await callback.answer()
+            return
+        if not is_allowed(callback.message.chat.id):
+            await callback.answer("Чат не авторизован.", show_alert=True)
+            return
+
+        await state.clear()
+        await callback.answer()
+        await panel.show(
+            callback.bot,
+            callback.message.chat.id,
+            HELP_TEXT,
+            reply_markup=panel.build_home_markup(),
+        )
+
+    @router.callback_query(F.data == "panel_add")
+    async def add_callback(callback: CallbackQuery, state: FSMContext) -> None:
+        if not callback.message:
+            await callback.answer()
+            return
+        if not is_allowed(callback.message.chat.id):
+            await callback.answer("Чат не авторизован.", show_alert=True)
+            return
+
+        await state.clear()
+        await state.set_state(AddWatchStates.network)
+        await callback.answer()
+        await panel.show(
+            callback.bot,
+            callback.message.chat.id,
+            NETWORK_PROMPT,
+            reply_markup=panel.build_network_markup(),
+        )
+
+    @router.callback_query(F.data == "panel_list")
+    async def list_callback(callback: CallbackQuery, state: FSMContext) -> None:
+        if not callback.message:
+            await callback.answer()
+            return
+        if not is_allowed(callback.message.chat.id):
+            await callback.answer("Чат не авторизован.", show_alert=True)
+            return
+
+        await state.clear()
+        await callback.answer()
+
+        watches = db.list_watches(callback.message.chat.id)
+        if not watches:
+            await panel.show(
+                callback.bot,
+                callback.message.chat.id,
+                "<i>Список пуст.</i> Добавь адрес через кнопку <b>Добавить адрес</b> ниже.",
+            )
+            return
+
+        await panel.show(
+            callback.bot,
+            callback.message.chat.id,
+            _format_watch_list(watches),
+        )
+
+    @router.callback_query(F.data == "panel_history")
+    async def history_callback(callback: CallbackQuery, state: FSMContext) -> None:
+        if not callback.message:
+            await callback.answer()
+            return
+        if not is_allowed(callback.message.chat.id):
+            await callback.answer("Чат не авторизован.", show_alert=True)
+            return
+
+        await state.clear()
+        await state.set_state(QuickActionStates.history_reference)
+        await callback.answer()
+        await panel.show(
+            callback.bot,
+            callback.message.chat.id,
+            "Пришли <b>номер строки из списка</b> или <b>id</b> кошелька для истории.",
+            reply_markup=panel.build_back_markup(),
+        )
+
+    @router.callback_query(F.data == "panel_csv")
+    async def csv_callback(callback: CallbackQuery, state: FSMContext) -> None:
+        if not callback.message:
+            await callback.answer()
+            return
+        if not is_allowed(callback.message.chat.id):
+            await callback.answer("Чат не авторизован.", show_alert=True)
+            return
+
+        await state.clear()
+        await state.set_state(QuickActionStates.csv_reference)
+        await callback.answer()
+        await panel.show(
+            callback.bot,
+            callback.message.chat.id,
+            "Пришли <b>id или номер строки</b>, а затем опционально число строк.\n"
+            "Пример: <code>1 25</code>",
+            reply_markup=panel.build_back_markup(),
+        )
+
+    @router.callback_query(F.data.startswith("pick_network:"))
+    async def network_callback(callback: CallbackQuery, state: FSMContext) -> None:
+        if not callback.message:
+            await callback.answer()
+            return
+        if not is_allowed(callback.message.chat.id):
+            await callback.answer("Чат не авторизован.", show_alert=True)
+            return
+
+        network = callback.data.split(":", maxsplit=1)[1]
+        await state.clear()
+        await state.update_data(network=network)
+        await state.set_state(AddWatchStates.address)
+        await callback.answer("Сеть: {0}".format(network.upper()))
+        await panel.show(
+            callback.bot,
+            callback.message.chat.id,
+            "Пришли адрес кошелька для сети <code>{0}</code>.".format(network),
+            reply_markup=panel.build_back_markup(),
+        )
 
     @router.callback_query(F.data == "clear_alerts")
     async def clear_alerts_callback(callback: CallbackQuery, state: FSMContext) -> None:
@@ -110,6 +253,114 @@ def build_router(
             return
 
         await show_panel(message, _format_watch_list(watches))
+
+    @router.message(QuickActionStates.history_reference)
+    async def history_reference_handler(message: Message, state: FSMContext) -> None:
+        if await deny_if_needed(message):
+            return
+        await panel.cleanup_user_message(message)
+
+        token = (message.text or "").strip()
+        if not token:
+            await show_panel(
+                message,
+                "Пришли <b>номер строки из списка</b> или <b>id</b> кошелька для истории.",
+                reply_markup=panel.build_back_markup(),
+            )
+            return
+
+        watch = db.resolve_watch_reference(message.chat.id, token)
+        if not watch:
+            await show_panel(
+                message,
+                "Адрес не найден. Пришли номер из <b>/list</b> или внутренний <b>id</b>.",
+                reply_markup=panel.build_back_markup(),
+            )
+            return
+
+        await state.clear()
+        try:
+            events = await history_service.fetch_recent_events(watch, limit=20)
+        except aiohttp.ClientResponseError as exc:
+            await show_panel(message, _render_api_error(watch, exc.status))
+            return
+        if not events:
+            await show_panel(message, _render_empty_history(watch))
+            return
+
+        await show_panel(message, history_service.build_history_text(watch, events, recent_count=5))
+
+    @router.message(QuickActionStates.csv_reference)
+    async def csv_reference_handler(message: Message, state: FSMContext) -> None:
+        if await deny_if_needed(message):
+            return
+        await panel.cleanup_user_message(message)
+
+        raw = (message.text or "").strip()
+        parts = raw.split()
+        if not parts or len(parts) > 2:
+            await show_panel(
+                message,
+                "Пришли <b>id или номер строки</b>, а затем опционально число строк.\n"
+                "Пример: <code>1 25</code>",
+                reply_markup=panel.build_back_markup(),
+            )
+            return
+
+        watch = db.resolve_watch_reference(message.chat.id, parts[0])
+        if not watch:
+            await show_panel(
+                message,
+                "Адрес не найден. Пришли номер из <b>/list</b> или внутренний <b>id</b>.",
+                reply_markup=panel.build_back_markup(),
+            )
+            return
+
+        csv_count = 5
+        if len(parts) == 2:
+            if not parts[1].isdigit():
+                await show_panel(
+                    message,
+                    "Количество строк должно быть числом от <code>1</code> до <code>100</code>.",
+                    reply_markup=panel.build_back_markup(),
+                )
+                return
+            csv_count = int(parts[1])
+            if not 1 <= csv_count <= 100:
+                await show_panel(
+                    message,
+                    "Количество строк должно быть от <code>1</code> до <code>100</code>.",
+                    reply_markup=panel.build_back_markup(),
+                )
+                return
+
+        await state.clear()
+        try:
+            events = await history_service.fetch_recent_events(watch, limit=csv_count)
+        except aiohttp.ClientResponseError as exc:
+            await show_panel(message, _render_api_error(watch, exc.status))
+            return
+        if not events:
+            await show_panel(message, _render_empty_history(watch))
+            return
+
+        filename, payload = history_service.build_csv_export(watch, events, recent_count=csv_count)
+        exported_count = min(csv_count, len(events))
+        await show_panel(
+            message,
+            "<b><i>CSV готов</i></b>\n"
+            "<i>Кошелек:</i> <b>{0}</b>\n"
+            "<i>Строк:</i> <code>{1}</code>".format(html.quote(watch.label), exported_count),
+        )
+        sent = await message.bot.send_document(
+            chat_id=message.chat.id,
+            document=BufferedInputFile(payload, filename=filename),
+            caption=(
+                "<b>{0}</b>\n"
+                "<i>Последние транзакции:</i> <code>{1}</code>"
+            ).format(html.quote(watch.label), exported_count),
+        )
+        db.add_alert_message(message.chat.id, sent.message_id)
 
     @router.message(Command("history"))
     async def history_handler(message: Message, state: FSMContext, command: CommandObject) -> None:
@@ -198,7 +449,7 @@ def build_router(
             return
         await panel.cleanup_user_message(message)
         await state.clear()
-        removed = await _clear_alerts(
+        await _clear_alerts(
             bot=message.bot,
             db=db,
             chat_id=message.chat.id,
@@ -330,7 +581,7 @@ def build_router(
 
         await state.clear()
         await state.set_state(AddWatchStates.network)
-        await show_panel(message, NETWORK_PROMPT)
+        await show_panel(message, NETWORK_PROMPT, reply_markup=panel.build_network_markup())
 
     @router.message(AddWatchStates.network)
     async def add_network_handler(message: Message, state: FSMContext) -> None:
@@ -341,11 +592,19 @@ def build_router(
         try:
             network = normalize_network(message.text or "")
         except ValidationError as exc:
-            await show_panel(message, "{0}\n\n{1}".format(str(exc), NETWORK_PROMPT))
+            await show_panel(
+                message,
+                "{0}\n\n{1}".format(str(exc), NETWORK_PROMPT),
+                reply_markup=panel.build_network_markup(),
+            )
             return
         await state.update_data(network=network)
         await state.set_state(AddWatchStates.address)
-        await show_panel(message, "Пришли адрес кошелька для сети <code>{0}</code>.".format(network))
+        await show_panel(
+            message,
+            "Пришли адрес кошелька для сети <code>{0}</code>.".format(network),
+            reply_markup=panel.build_back_markup(),
+        )
 
     @router.message(AddWatchStates.address)
     async def add_address_handler(message: Message, state: FSMContext) -> None:
@@ -361,6 +620,7 @@ def build_router(
             await show_panel(
                 message,
                 "{0}\n\nПришли адрес кошелька для сети <code>{1}</code>.".format(str(exc), network),
+                reply_markup=panel.build_back_markup(),
             )
             return
         await state.update_data(address=address)
@@ -368,6 +628,7 @@ def build_router(
         await show_panel(
             message,
             "Напиши подпись для адреса или отправь <code>-</code>, чтобы оставить сам адрес.",
+            reply_markup=panel.build_back_markup(),
         )
 
     @router.message(AddWatchStates.label)
@@ -393,7 +654,7 @@ def build_router(
         if await deny_if_needed(message):
             return
         await panel.cleanup_user_message(message)
-        await show_panel(message, "<i>Неизвестная команда.</i> Используй <code>/help</code>.")
+        await show_panel(message, "<i>Неизвестная команда.</i> Используй кнопки ниже или <b>/help</b>.")
 
     @router.message()
     async def fallback_text(message: Message, state: FSMContext) -> None:
@@ -402,7 +663,7 @@ def build_router(
         if await state.get_state():
             return
         await panel.cleanup_user_message(message)
-        await show_panel(message, "Используй команды из меню или напиши <code>/help</code>.")
+        await show_panel(message, "Используй кнопки ниже или команды из меню.")
 
     return router
 

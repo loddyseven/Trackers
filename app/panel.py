@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -23,8 +25,9 @@ class ChatPanelService:
         chat_id: int,
         text: str,
         force_new: bool = False,
+        reply_markup: Optional[InlineKeyboardMarkup] = None,
     ) -> int:
-        reply_markup = self._build_panel_markup()
+        reply_markup = reply_markup or self.build_home_markup()
         if not force_new:
             panel_message_id = self.db.get_panel_message_id(chat_id)
             if panel_message_id:
@@ -47,15 +50,104 @@ class ChatPanelService:
         return sent.message_id
 
     @staticmethod
-    def _build_panel_markup() -> InlineKeyboardMarkup:
+    def build_home_markup() -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(
             inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="Добавить адрес",
+                        callback_data="panel_add",
+                        style="success",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="Список адресов",
+                        callback_data="panel_list",
+                        style="primary",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="История",
+                        callback_data="panel_history",
+                        style="primary",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="CSV",
+                        callback_data="panel_csv",
+                        style="primary",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="Назад в меню",
+                        callback_data="panel_menu",
+                        style="primary",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="Очистить уведомления",
+                        callback_data="clear_alerts",
+                        style="danger",
+                    ),
+                ],
+            ]
+        )
+
+    @staticmethod
+    def build_back_markup() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="Назад в меню",
+                        callback_data="panel_menu",
+                        style="primary",
+                    ),
+                ],
                 [
                     InlineKeyboardButton(
                         text="Очистить уведомления",
                         callback_data="clear_alerts",
                         style="danger",
                     )
-                ]
+                ],
+            ]
+        )
+
+    @staticmethod
+    def build_network_markup() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="TON",
+                        callback_data="pick_network:ton",
+                        style="success",
+                    ),
+                    InlineKeyboardButton(
+                        text="TRC20",
+                        callback_data="pick_network:trc20",
+                        style="success",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="Назад в меню",
+                        callback_data="panel_menu",
+                        style="primary",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="Очистить уведомления",
+                        callback_data="clear_alerts",
+                        style="danger",
+                    )
+                ],
             ]
         )
