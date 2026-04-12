@@ -81,6 +81,127 @@ class ChatPanelService:
         )
 
     @staticmethod
+    def build_list_markup() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="Добавить адрес",
+                        callback_data="panel_add",
+                        style="success",
+                    ),
+                    InlineKeyboardButton(
+                        text="История",
+                        callback_data="panel_history",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="Назад в меню",
+                        callback_data="panel_menu",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="Очистить уведомления",
+                        callback_data="clear_alerts",
+                        style="danger",
+                    ),
+                ],
+            ]
+        )
+
+    @staticmethod
+    def build_history_markup() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="CSV",
+                        callback_data="panel_csv",
+                    ),
+                    InlineKeyboardButton(
+                        text="Список адресов",
+                        callback_data="panel_list",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="Назад в меню",
+                        callback_data="panel_menu",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="Очистить уведомления",
+                        callback_data="clear_alerts",
+                        style="danger",
+                    ),
+                ],
+            ]
+        )
+
+    @staticmethod
+    def build_csv_markup() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="История",
+                        callback_data="panel_history",
+                    ),
+                    InlineKeyboardButton(
+                        text="Список адресов",
+                        callback_data="panel_list",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="Назад в меню",
+                        callback_data="panel_menu",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="Очистить уведомления",
+                        callback_data="clear_alerts",
+                        style="danger",
+                    ),
+                ],
+            ]
+        )
+
+    @staticmethod
+    def build_result_markup() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="Список адресов",
+                        callback_data="panel_list",
+                    ),
+                    InlineKeyboardButton(
+                        text="История",
+                        callback_data="panel_history",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="Назад в меню",
+                        callback_data="panel_menu",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="Очистить уведомления",
+                        callback_data="clear_alerts",
+                        style="danger",
+                    ),
+                ],
+            ]
+        )
+
+    @staticmethod
     def build_back_markup() -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(
             inline_keyboard=[

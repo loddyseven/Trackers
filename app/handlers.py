@@ -136,6 +136,7 @@ def build_router(
                 callback.bot,
                 callback.message.chat.id,
                 "<i>Список пуст.</i> Добавь адрес через кнопку <b>Добавить адрес</b> ниже.",
+                reply_markup=panel.build_list_markup(),
             )
             return
 
@@ -143,6 +144,7 @@ def build_router(
             callback.bot,
             callback.message.chat.id,
             _format_watch_list(watches),
+            reply_markup=panel.build_list_markup(),
         )
 
     @router.callback_query(F.data == "panel_history")
@@ -161,7 +163,7 @@ def build_router(
             callback.bot,
             callback.message.chat.id,
             "Пришли <b>номер строки</b>, <b>id</b> или любой адрес <b>TON/TRC20</b> для истории.",
-            reply_markup=panel.build_back_markup(),
+            reply_markup=panel.build_history_markup(),
         )
 
     @router.callback_query(F.data == "panel_csv")
@@ -181,7 +183,7 @@ def build_router(
             callback.message.chat.id,
             "Пришли <b>id</b>, <b>номер строки</b> или <b>адрес</b>, а затем опционально число строк.\n"
             "Пример: <code>1 25</code>",
-            reply_markup=panel.build_back_markup(),
+            reply_markup=panel.build_csv_markup(),
         )
 
     @router.callback_query(F.data.startswith("pick_network:"))
@@ -252,10 +254,14 @@ def build_router(
 
         watches = db.list_watches(message.chat.id)
         if not watches:
-            await show_panel(message, "<i>Список пуст.</i> Добавь адрес через <code>/add</code>.")
+            await show_panel(
+                message,
+                "<i>Список пуст.</i> Добавь адрес через <code>/add</code>.",
+                reply_markup=panel.build_list_markup(),
+            )
             return
 
-        await show_panel(message, _format_watch_list(watches))
+        await show_panel(message, _format_watch_list(watches), reply_markup=panel.build_list_markup())
 
     @router.message(QuickActionStates.history_reference)
     async def history_reference_handler(message: Message, state: FSMContext) -> None:
@@ -268,7 +274,7 @@ def build_router(
             await show_panel(
                 message,
                 "Пришли <b>номер строки</b>, <b>id</b> или любой адрес <b>TON/TRC20</b> для истории.",
-                reply_markup=panel.build_back_markup(),
+                reply_markup=panel.build_history_markup(),
             )
             return
 
@@ -277,7 +283,7 @@ def build_router(
             await show_panel(
                 message,
                 "Не удалось найти кошелек. Пришли номер из <b>/list</b>, внутренний <b>id</b> или любой адрес <b>TON/TRC20</b>.",
-                reply_markup=panel.build_back_markup(),
+                reply_markup=panel.build_history_markup(),
             )
             return
 
@@ -285,13 +291,17 @@ def build_router(
         try:
             events = await history_service.fetch_history_events(watch)
         except aiohttp.ClientResponseError as exc:
-            await show_panel(message, _render_api_error(watch, exc.status))
+            await show_panel(message, _render_api_error(watch, exc.status), reply_markup=panel.build_history_markup())
             return
         if not events:
-            await show_panel(message, _render_empty_history(watch))
+            await show_panel(message, _render_empty_history(watch), reply_markup=panel.build_history_markup())
             return
 
-        await show_panel(message, history_service.build_history_text(watch, events, recent_count=5))
+        await show_panel(
+            message,
+            history_service.build_history_text(watch, events, recent_count=5),
+            reply_markup=panel.build_history_markup(),
+        )
 
     @router.message(QuickActionStates.csv_reference)
     async def csv_reference_handler(message: Message, state: FSMContext) -> None:
@@ -306,7 +316,7 @@ def build_router(
                 message,
                 "Пришли <b>id</b>, <b>номер строки</b> или <b>адрес</b>, а затем опционально число строк.\n"
                 "Пример: <code>1 25</code>",
-                reply_markup=panel.build_back_markup(),
+                reply_markup=panel.build_csv_markup(),
             )
             return
 
@@ -315,7 +325,7 @@ def build_router(
             await show_panel(
                 message,
                 "Не удалось найти кошелек. Пришли номер из <b>/list</b>, внутренний <b>id</b> или любой адрес <b>TON/TRC20</b>.",
-                reply_markup=panel.build_back_markup(),
+                reply_markup=panel.build_csv_markup(),
             )
             return
 
@@ -325,7 +335,7 @@ def build_router(
                 await show_panel(
                     message,
                     "Количество строк должно быть числом от <code>1</code> до <code>100</code>.",
-                    reply_markup=panel.build_back_markup(),
+                    reply_markup=panel.build_csv_markup(),
                 )
                 return
             csv_count = int(parts[1])
@@ -333,7 +343,7 @@ def build_router(
                 await show_panel(
                     message,
                     "Количество строк должно быть от <code>1</code> до <code>100</code>.",
-                    reply_markup=panel.build_back_markup(),
+                    reply_markup=panel.build_csv_markup(),
                 )
                 return
 
@@ -341,10 +351,10 @@ def build_router(
         try:
             events = await history_service.fetch_recent_events(watch, limit=csv_count)
         except aiohttp.ClientResponseError as exc:
-            await show_panel(message, _render_api_error(watch, exc.status))
+            await show_panel(message, _render_api_error(watch, exc.status), reply_markup=panel.build_csv_markup())
             return
         if not events:
-            await show_panel(message, _render_empty_history(watch))
+            await show_panel(message, _render_empty_history(watch), reply_markup=panel.build_csv_markup())
             return
 
         filename, payload = history_service.build_csv_export(watch, events, recent_count=csv_count)
@@ -354,6 +364,7 @@ def build_router(
             "<b><i>CSV готов</i></b>\n"
             "<i>Кошелек:</i> <b>{0}</b>\n"
             "<i>Строк:</i> <code>{1}</code>".format(html.quote(watch.label), exported_count),
+            reply_markup=panel.build_csv_markup(),
         )
         sent = await message.bot.send_document(
             chat_id=message.chat.id,
@@ -379,6 +390,7 @@ def build_router(
             panel=panel,
             usage="Используй формат: /history <номер из /list, id или адрес>",
             allow_external_address=True,
+            reply_markup=panel.build_history_markup(),
         )
         if not watch:
             return
@@ -386,13 +398,17 @@ def build_router(
         try:
             events = await history_service.fetch_history_events(watch)
         except aiohttp.ClientResponseError as exc:
-            await show_panel(message, _render_api_error(watch, exc.status))
+            await show_panel(message, _render_api_error(watch, exc.status), reply_markup=panel.build_history_markup())
             return
         if not events:
-            await show_panel(message, _render_empty_history(watch))
+            await show_panel(message, _render_empty_history(watch), reply_markup=panel.build_history_markup())
             return
 
-        await show_panel(message, history_service.build_history_text(watch, events, recent_count=5))
+        await show_panel(
+            message,
+            history_service.build_history_text(watch, events, recent_count=5),
+            reply_markup=panel.build_history_markup(),
+        )
 
     @router.message(Command("csv"))
     async def csv_handler(message: Message, state: FSMContext, command: CommandObject) -> None:
@@ -408,6 +424,7 @@ def build_router(
             panel=panel,
             usage="Используй формат: <code>/csv &lt;номер из /list, id или адрес&gt; &lt;1-100&gt;</code>",
             allow_external_address=True,
+            reply_markup=panel.build_csv_markup(),
         )
         if not watch:
             return
@@ -419,16 +436,17 @@ def build_router(
                 message,
                 "Количество строк должно быть от <code>1</code> до <code>100</code>.\n"
                 "Пример: <code>/csv {0} 25</code>".format(html.quote(csv_target)),
+                reply_markup=panel.build_csv_markup(),
             )
             return
 
         try:
             events = await history_service.fetch_recent_events(watch, limit=csv_count)
         except aiohttp.ClientResponseError as exc:
-            await show_panel(message, _render_api_error(watch, exc.status))
+            await show_panel(message, _render_api_error(watch, exc.status), reply_markup=panel.build_csv_markup())
             return
         if not events:
-            await show_panel(message, _render_empty_history(watch))
+            await show_panel(message, _render_empty_history(watch), reply_markup=panel.build_csv_markup())
             return
 
         filename, payload = history_service.build_csv_export(watch, events, recent_count=csv_count)
@@ -438,6 +456,7 @@ def build_router(
             "<b><i>CSV готов</i></b>\n"
             "<i>Кошелек:</i> <b>{0}</b>\n"
             "<i>Строк:</i> <code>{1}</code>".format(html.quote(watch.label), exported_count),
+            reply_markup=panel.build_csv_markup(),
         )
         sent = await message.bot.send_document(
             chat_id=message.chat.id,
@@ -480,9 +499,13 @@ def build_router(
             return
 
         if db.remove_watch(message.chat.id, watch.id):
-            await show_panel(message, "Адрес <b>{0}</b> удален.".format(html.quote(watch.label)))
+            await show_panel(
+                message,
+                "Адрес <b>{0}</b> удален.".format(html.quote(watch.label)),
+                reply_markup=panel.build_result_markup(),
+            )
             return
-        await show_panel(message, "<i>Адрес с таким id не найден.</i>")
+        await show_panel(message, "<i>Адрес с таким id не найден.</i>", reply_markup=panel.build_result_markup())
 
     @router.message(Command("pause"))
     async def pause_handler(message: Message, state: FSMContext, command: CommandObject) -> None:
@@ -502,9 +525,13 @@ def build_router(
             return
 
         if db.set_watch_status(message.chat.id, watch.id, False):
-            await show_panel(message, "Адрес <b>{0}</b> поставлен на паузу.".format(html.quote(watch.label)))
+            await show_panel(
+                message,
+                "Адрес <b>{0}</b> поставлен на паузу.".format(html.quote(watch.label)),
+                reply_markup=panel.build_result_markup(),
+            )
             return
-        await show_panel(message, "<i>Адрес с таким id не найден.</i>")
+        await show_panel(message, "<i>Адрес с таким id не найден.</i>", reply_markup=panel.build_result_markup())
 
     @router.message(Command("resume"))
     async def resume_handler(message: Message, state: FSMContext, command: CommandObject) -> None:
@@ -524,9 +551,13 @@ def build_router(
             return
 
         if db.set_watch_status(message.chat.id, watch.id, True):
-            await show_panel(message, "Адрес <b>{0}</b> снова активен.".format(html.quote(watch.label)))
+            await show_panel(
+                message,
+                "Адрес <b>{0}</b> снова активен.".format(html.quote(watch.label)),
+                reply_markup=panel.build_result_markup(),
+            )
             return
-        await show_panel(message, "<i>Адрес с таким id не найден.</i>")
+        await show_panel(message, "<i>Адрес с таким id не найден.</i>", reply_markup=panel.build_result_markup())
 
     @router.message(Command("rename"))
     async def rename_handler(message: Message, state: FSMContext, command: CommandObject) -> None:
@@ -539,6 +570,7 @@ def build_router(
             await show_panel(
                 message,
                 "Используй формат: <code>/rename &lt;номер из /list или id&gt; &lt;новое имя&gt;</code>",
+                reply_markup=panel.build_result_markup(),
             )
             return
 
@@ -547,6 +579,7 @@ def build_router(
             await show_panel(
                 message,
                 "Используй формат: <code>/rename &lt;номер из /list или id&gt; &lt;новое имя&gt;</code>",
+                reply_markup=panel.build_result_markup(),
             )
             return
 
@@ -555,18 +588,23 @@ def build_router(
             await show_panel(
                 message,
                 "Адрес не найден. Используй номер из <code>/list</code> или внутренний <code>id</code>.",
+                reply_markup=panel.build_result_markup(),
             )
             return
 
         label = parts[1].strip()[:80]
         if not label:
-            await show_panel(message, "<i>Новое имя не должно быть пустым.</i>")
+            await show_panel(message, "<i>Новое имя не должно быть пустым.</i>", reply_markup=panel.build_result_markup())
             return
 
         if db.rename_watch(message.chat.id, watch.id, label):
-            await show_panel(message, "Имя кошелька обновлено на <b>{0}</b>.".format(html.quote(label)))
+            await show_panel(
+                message,
+                "Имя кошелька обновлено на <b>{0}</b>.".format(html.quote(label)),
+                reply_markup=panel.build_result_markup(),
+            )
             return
-        await show_panel(message, "<i>Адрес с таким id не найден.</i>")
+        await show_panel(message, "<i>Адрес с таким id не найден.</i>", reply_markup=panel.build_result_markup())
 
     @router.message(Command("add"))
     async def add_handler(message: Message, state: FSMContext, command: CommandObject) -> None:
@@ -705,10 +743,11 @@ async def _resolve_watch_for_command(
     panel: ChatPanelService,
     usage: str,
     allow_external_address: bool = False,
+    reply_markup=None,
 ) -> Optional[Watch]:
     token = _extract_reference(command)
     if not token:
-        await panel.show(message.bot, message.chat.id, usage)
+        await panel.show(message.bot, message.chat.id, usage, reply_markup=reply_markup)
         return None
 
     watch = _resolve_watch_reference_or_address(
@@ -729,6 +768,7 @@ async def _resolve_watch_for_command(
             if allow_external_address
             else "Адрес не найден. Используй номер строки из <code>/list</code> или внутренний <code>id</code>."
         ),
+        reply_markup=reply_markup,
     )
     return None
 
@@ -809,6 +849,7 @@ async def _try_create_watch(
             html.quote(watch.address),
             watch.id,
         ),
+        reply_markup=panel.build_result_markup(),
     )
 
 
