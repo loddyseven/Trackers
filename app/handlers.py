@@ -494,6 +494,7 @@ def build_router(
             command=command,
             panel=panel,
             usage="Используй формат: /remove <номер из /list или id>",
+            reply_markup=panel.build_result_markup(),
         )
         if not watch:
             return
@@ -520,6 +521,7 @@ def build_router(
             command=command,
             panel=panel,
             usage="Используй формат: /pause <номер из /list или id>",
+            reply_markup=panel.build_result_markup(),
         )
         if not watch:
             return
@@ -546,6 +548,7 @@ def build_router(
             command=command,
             panel=panel,
             usage="Используй формат: /resume <номер из /list или id>",
+            reply_markup=panel.build_result_markup(),
         )
         if not watch:
             return
@@ -616,7 +619,11 @@ def build_router(
             await state.clear()
             parts = command.args.split(maxsplit=2)
             if len(parts) < 2:
-                await show_panel(message, "Формат: <code>/add &lt;ton|trc20&gt; &lt;address&gt; [label]</code>")
+                await show_panel(
+                    message,
+                    "Формат: <code>/add &lt;ton|trc20&gt; &lt;address&gt; [label]</code>",
+                    reply_markup=panel.build_network_markup(),
+                )
                 return
             network_raw, address_raw = parts[0], parts[1]
             label_raw = parts[2] if len(parts) > 2 else address_raw
@@ -825,13 +832,19 @@ async def _try_create_watch(
             label=label,
         )
     except ValidationError as exc:
-        await panel.show(message.bot, message.chat.id, str(exc))
+        await panel.show(
+            message.bot,
+            message.chat.id,
+            str(exc),
+            reply_markup=panel.build_result_markup(),
+        )
         return
     except DuplicateWatchError:
         await panel.show(
             message.bot,
             message.chat.id,
             "<i>Такой адрес уже есть в отслеживании для этого чата.</i>",
+            reply_markup=panel.build_result_markup(),
         )
         return
 
