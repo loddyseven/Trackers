@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 from decimal import Decimal
 from typing import Dict, List, Optional
+import time
 from urllib.parse import quote
 
 import aiohttp
@@ -12,10 +14,15 @@ from app.utils import format_timestamp, format_ton_amount, format_units, parse_d
 
 class TonApiClient:
     PAGE_LIMIT = 100
+    DEFAULT_REQUEST_INTERVAL_SECONDS = 0.35
+    DEFAULT_BACKOFF_SECONDS = 1.5
+    MAX_RETRIES = 3
 
     def __init__(self, base_url: str, api_key: Optional[str] = None) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
+        self._request_lock = asyncio.Lock()
+        self._next_request_ready_at = 0.0
 
     async def fetch_recent_activity(
         self,
@@ -71,9 +78,36 @@ class TonApiClient:
         params = {"limit": limit}
         if before_lt is not None:
             params["before_lt"] = before_lt
-        async with session.get(url, headers=headers, params=params) as response:
-            response.raise_for_status()
-            return await response.json()
+        for attempt in range(self.MAX_RETRIES):
+            await self._wait_for_request_slot()
+            async with session.get(url, headers=headers, params=params) as response:
+                if response.status != 429:
+                    response.raise_for_status()
+                    return await response.json()
+
+                if attempt == self.MAX_RETRIES - 1:
+                    response.raise_for_status()
+
+                retry_after = self._parse_retry_after(response)
+            await asyncio.sleep(retry_after)
+
+        raise RuntimeError("TONAPI retries exhausted")
+
+    async def _wait_for_request_slot(self) -> None:
+        async with self._request_lock:
+            now = time.monotonic()
+            wait_seconds = max(0.0, self._next_request_ready_at - now)
+            if wait_seconds > 0:
+                await asyncio.sleep(wait_seconds)
+            self._next_request_ready_at = (
+                time.monotonic() + self.DEFAULT_REQUEST_INTERVAL_SECONDS
+            )
+
+    def _parse_retry_after(self, response: aiohttp.ClientResponse) -> float:
+        header = (response.headers.get("Retry-After") or "").strip()
+        if header.isdigit():
+            return max(float(header), self.DEFAULT_BACKOFF_SECONDS)
+        return self.DEFAULT_BACKOFF_SECONDS
 
     def _parse_events(self, payload: Dict, address: str) -> List[ChainEvent]:
         events = []
