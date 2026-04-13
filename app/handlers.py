@@ -30,7 +30,7 @@ HELP_TEXT = """
 /list - список отслеживаемых адресов
 /history &lt;id|address&gt; - история, суммы и крупные транзакции
 /csv &lt;id|address&gt; &lt;1-100&gt; - CSV таблица с нужным числом последних транзакций
-/clear - очистить уведомления бота
+/clear - убрать старые уведомления бота
 /remove &lt;id&gt; - удалить адрес
 /pause &lt;id&gt; - поставить на паузу
 /resume &lt;id&gt; - снять с паузы
@@ -222,7 +222,7 @@ def build_router(
             db=db,
             chat_id=callback.message.chat.id,
         )
-        await callback.answer("Очищено: {0}".format(removed))
+        await callback.answer("Убрано: {0}".format(removed))
         await panel.show(
             callback.bot,
             callback.message.chat.id,

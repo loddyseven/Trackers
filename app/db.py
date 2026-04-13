@@ -126,14 +126,28 @@ class Database:
 
     def set_watch_status(self, chat_id: int, watch_id: int, active: bool) -> bool:
         now = utc_now_iso()
-        cursor = self.connection.execute(
-            """
-            UPDATE watches
-            SET is_active = ?, updated_at = ?
-            WHERE chat_id = ? AND id = ?
-            """,
-            (1 if active else 0, now, chat_id, watch_id),
-        )
+        if active:
+            cursor = self.connection.execute(
+                """
+                UPDATE watches
+                SET is_active = 1,
+                    last_cursor = NULL,
+                    last_checked_at = NULL,
+                    updated_at = ?
+                WHERE chat_id = ? AND id = ?
+                """,
+                (now, chat_id, watch_id),
+            )
+        else:
+            cursor = self.connection.execute(
+                """
+                UPDATE watches
+                SET is_active = 0,
+                    updated_at = ?
+                WHERE chat_id = ? AND id = ?
+                """,
+                (now, chat_id, watch_id),
+            )
         self.connection.commit()
         return cursor.rowcount > 0
 

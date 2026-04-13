@@ -72,7 +72,7 @@ class ChatPanelService:
                 ],
                 [
                     InlineKeyboardButton(
-                        text="Очистить уведомления",
+                        text="Убрать уведомления",
                         callback_data="clear_alerts",
                         style="danger",
                     ),

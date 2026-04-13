@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 import logging
 from typing import Optional, Sequence
 
@@ -77,19 +78,78 @@ class WatcherService:
             self.db.update_cursor(watch.id, newest_cursor)
             return
 
-        pending = []
-        for event in events:
-            if event.id == watch.last_cursor:
-                break
-            pending.append(event)
+        pending, should_advance_cursor = self._collect_pending_events(watch, events)
 
         if not pending:
+            if should_advance_cursor:
+                self.db.update_cursor(watch.id, newest_cursor)
             return
 
         for event in reversed(pending):
             await self._notify_watch(watch, event)
 
         self.db.update_cursor(watch.id, newest_cursor)
+
+    def _collect_pending_events(
+        self,
+        watch: Watch,
+        events: Sequence[ChainEvent],
+    ) -> tuple[list[ChainEvent], bool]:
+        pending: list[ChainEvent] = []
+        for event in events:
+            if event.id == watch.last_cursor:
+                return pending, False
+            pending.append(event)
+
+        fallback = self._filter_newer_than_last_check(watch, events)
+        if fallback:
+            logger.warning(
+                "Cursor desync for watch #%s (%s), recovered %s fresh event(s) by timestamp fallback",
+                watch.id,
+                watch.address,
+                len(fallback),
+            )
+        else:
+            logger.warning(
+                "Cursor desync for watch #%s (%s), resyncing to newest event without replay",
+                watch.id,
+                watch.address,
+            )
+        return fallback, True
+
+    def _filter_newer_than_last_check(
+        self,
+        watch: Watch,
+        events: Sequence[ChainEvent],
+    ) -> list[ChainEvent]:
+        last_checked_ts = self._parse_iso_timestamp(watch.last_checked_at)
+        if last_checked_ts is None:
+            return []
+        if not self._is_recent_desync(last_checked_ts):
+            return []
+
+        return [
+            event
+            for event in events
+            if event.occurred_at_ts is not None and event.occurred_at_ts > last_checked_ts
+        ]
+
+    def _is_recent_desync(self, last_checked_ts: int) -> bool:
+        max_age_seconds = max(self.poll_interval_seconds * 3, 30)
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        return now_ts - last_checked_ts <= max_age_seconds
+
+    @staticmethod
+    def _parse_iso_timestamp(value: Optional[str]) -> Optional[int]:
+        if not value:
+            return None
+        try:
+            parsed = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return int(parsed.timestamp())
 
     async def _fetch_events(
         self,
