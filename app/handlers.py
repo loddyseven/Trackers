@@ -269,7 +269,7 @@ def build_router(
             return
         await panel.cleanup_user_message(message)
 
-        token = (message.text or "").strip()
+        token = _strip_inline_command_prefix(message.text or "", "history")
         if not token:
             await show_panel(
                 message,
@@ -309,7 +309,7 @@ def build_router(
             return
         await panel.cleanup_user_message(message)
 
-        raw = (message.text or "").strip()
+        raw = _strip_inline_command_prefix(message.text or "", "csv")
         parts = raw.split()
         if not parts or len(parts) > 2:
             await show_panel(
@@ -723,6 +723,21 @@ def _extract_reference(command: CommandObject) -> Optional[str]:
     if not command.args:
         return None
     return command.args.split(maxsplit=1)[0].strip()
+
+
+def _strip_inline_command_prefix(text: str, command_name: str) -> str:
+    raw = text.strip()
+    lowered = raw.lower()
+    prefixes = (
+        "/{0}".format(command_name),
+        "/{0}@trackeronchainbot".format(command_name),
+    )
+    for prefix in prefixes:
+        if lowered == prefix:
+            return ""
+        if lowered.startswith(prefix + " "):
+            return raw[len(prefix) :].strip()
+    return raw
 
 
 def _parse_csv_count(command: CommandObject) -> Optional[int]:
