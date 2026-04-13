@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 from typing import Optional
 
 import aiohttp
@@ -21,6 +23,8 @@ from app.validators import (
     normalize_label,
     normalize_network,
 )
+
+logger = logging.getLogger(__name__)
 
 
 NETWORK_PROMPT = "Выбери сеть кнопкой ниже или напиши <code>ton</code> / <code>trc20</code>."
@@ -348,33 +352,14 @@ def build_router(
                 return
 
         await state.clear()
-        try:
-            events = await history_service.fetch_recent_events(watch, limit=csv_count)
-        except aiohttp.ClientResponseError as exc:
-            await show_panel(message, _render_api_error(watch, exc.status), reply_markup=panel.build_csv_markup())
-            return
-        if not events:
-            await show_panel(message, _render_empty_history(watch), reply_markup=panel.build_csv_markup())
-            return
-
-        filename, payload = history_service.build_csv_export(watch, events, recent_count=csv_count)
-        exported_count = min(csv_count, len(events))
-        await show_panel(
-            message,
-            "<b><i>CSV готов</i></b>\n"
-            "<i>Кошелек:</i> <b>{0}</b>\n"
-            "<i>Строк:</i> <code>{1}</code>".format(html.quote(watch.label), exported_count),
-            reply_markup=panel.build_csv_markup(),
+        await _send_csv_export(
+            message=message,
+            watch=watch,
+            csv_count=csv_count,
+            history_service=history_service,
+            panel=panel,
+            db=db,
         )
-        sent = await message.bot.send_document(
-            chat_id=message.chat.id,
-            document=BufferedInputFile(payload, filename=filename),
-            caption=(
-                "<b>{0}</b>\n"
-                "<i>Последние транзакции:</i> <code>{1}</code>"
-            ).format(html.quote(watch.label), exported_count),
-        )
-        db.add_alert_message(message.chat.id, sent.message_id)
 
     @router.message(Command("history"))
     async def history_handler(message: Message, state: FSMContext, command: CommandObject) -> None:
@@ -440,33 +425,14 @@ def build_router(
             )
             return
 
-        try:
-            events = await history_service.fetch_recent_events(watch, limit=csv_count)
-        except aiohttp.ClientResponseError as exc:
-            await show_panel(message, _render_api_error(watch, exc.status), reply_markup=panel.build_csv_markup())
-            return
-        if not events:
-            await show_panel(message, _render_empty_history(watch), reply_markup=panel.build_csv_markup())
-            return
-
-        filename, payload = history_service.build_csv_export(watch, events, recent_count=csv_count)
-        exported_count = min(csv_count, len(events))
-        await show_panel(
-            message,
-            "<b><i>CSV готов</i></b>\n"
-            "<i>Кошелек:</i> <b>{0}</b>\n"
-            "<i>Строк:</i> <code>{1}</code>".format(html.quote(watch.label), exported_count),
-            reply_markup=panel.build_csv_markup(),
+        await _send_csv_export(
+            message=message,
+            watch=watch,
+            csv_count=csv_count,
+            history_service=history_service,
+            panel=panel,
+            db=db,
         )
-        sent = await message.bot.send_document(
-            chat_id=message.chat.id,
-            document=BufferedInputFile(payload, filename=filename),
-            caption=(
-                "<b>{0}</b>\n"
-                "<i>Последние транзакции:</i> <code>{1}</code>"
-            ).format(html.quote(watch.label), exported_count),
-        )
-        db.add_alert_message(message.chat.id, sent.message_id)
 
     @router.message(Command("clear"))
     async def clear_handler(message: Message, state: FSMContext) -> None:
@@ -919,6 +885,8 @@ def _render_empty_history(watch: Watch) -> str:
 def _render_api_error(watch: Watch, status_code: int) -> str:
     if status_code == 429:
         details = "Внешний API временно ограничил запросы. Попробуй еще раз чуть позже."
+    elif status_code == 400:
+        details = "Внешний API отклонил этот адрес. Похоже, адрес некорректный или не поддерживается."
     else:
         details = "Не удалось получить историю из внешнего API."
 
@@ -933,6 +901,120 @@ def _render_api_error(watch: Watch, status_code: int) -> str:
         html.quote(watch.address),
         details,
     )
+
+
+def _render_csv_progress(watch: Watch, csv_count: int) -> str:
+    return (
+        "<b><i>Готовлю CSV</i></b>\n"
+        "<i>Кошелек:</i> <b>{0}</b>\n"
+        "<i>Запрошено строк:</i> <code>{1}</code>"
+    ).format(
+        html.quote(watch.label),
+        csv_count,
+    )
+
+
+def _render_csv_transport_error(watch: Watch) -> str:
+    return (
+        "<b><i>CSV</i></b>\n"
+        "<i>Сеть:</i> <code>{0}</code> | <i>Имя:</i> <b>{1}</b>\n"
+        "<code>{2}</code>\n"
+        "<i>Внешний API не ответил вовремя. Попробуй еще раз через несколько секунд.</i>"
+    ).format(
+        watch.network,
+        html.quote(watch.label),
+        html.quote(watch.address),
+    )
+
+
+def _render_csv_delivery_error(watch: Watch) -> str:
+    return (
+        "<b><i>CSV</i></b>\n"
+        "<i>Сеть:</i> <code>{0}</code> | <i>Имя:</i> <b>{1}</b>\n"
+        "<code>{2}</code>\n"
+        "<i>Файл не удалось отправить в Telegram. Попробуй еще раз.</i>"
+    ).format(
+        watch.network,
+        html.quote(watch.label),
+        html.quote(watch.address),
+    )
+
+
+async def _send_csv_export(
+    message: Message,
+    watch: Watch,
+    csv_count: int,
+    history_service: WalletHistoryService,
+    panel: ChatPanelService,
+    db: Database,
+) -> None:
+    await panel.show(
+        message.bot,
+        message.chat.id,
+        _render_csv_progress(watch, csv_count),
+        reply_markup=panel.build_csv_markup(),
+    )
+
+    try:
+        events = await history_service.fetch_recent_events(watch, limit=csv_count)
+    except aiohttp.ClientResponseError as exc:
+        await panel.show(
+            message.bot,
+            message.chat.id,
+            _render_api_error(watch, exc.status),
+            reply_markup=panel.build_csv_markup(),
+        )
+        return
+    except (aiohttp.ClientError, asyncio.TimeoutError):
+        logger.exception("CSV fetch failed for %s", watch.address)
+        await panel.show(
+            message.bot,
+            message.chat.id,
+            _render_csv_transport_error(watch),
+            reply_markup=panel.build_csv_markup(),
+        )
+        return
+
+    if not events:
+        await panel.show(
+            message.bot,
+            message.chat.id,
+            _render_empty_history(watch),
+            reply_markup=panel.build_csv_markup(),
+        )
+        return
+
+    filename, payload = history_service.build_csv_export(watch, events, recent_count=csv_count)
+    exported_count = min(csv_count, len(events))
+    await panel.show(
+        message.bot,
+        message.chat.id,
+        "<b><i>CSV готов</i></b>\n"
+        "<i>Кошелек:</i> <b>{0}</b>\n"
+        "<i>Строк:</i> <code>{1}</code>".format(html.quote(watch.label), exported_count),
+        reply_markup=panel.build_csv_markup(),
+    )
+
+    try:
+        sent = await message.bot.send_document(
+            chat_id=message.chat.id,
+            document=BufferedInputFile(payload, filename=filename),
+            caption=(
+                "<b>{0}</b>\n"
+                "<i>Последние транзакции:</i> <code>{1}</code>"
+            ).format(html.quote(watch.label), exported_count),
+        )
+    except Exception:
+        logger.exception("CSV delivery failed for %s", watch.address)
+        await panel.show(
+            message.bot,
+            message.chat.id,
+            _render_csv_delivery_error(watch),
+            reply_markup=panel.build_csv_markup(),
+        )
+        return
+
+    db.add_alert_message(message.chat.id, sent.message_id)
 
 
 async def _clear_alerts(bot, db: Database, chat_id: int) -> int:
