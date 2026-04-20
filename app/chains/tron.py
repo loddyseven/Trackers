@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import List, Optional
 
 import aiohttp
@@ -7,9 +8,14 @@ import aiohttp
 from app.models import ChainEvent
 from app.utils import format_timestamp, format_units, parse_decimal, shorten_address
 
+logger = logging.getLogger(__name__)
+
 
 class TronGridClient:
     PAGE_LIMIT = 200
+    KNOWN_TOKEN_DECIMALS = {
+        "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t": 6,  # Official USDT on TRON
+    }
 
     def __init__(self, base_url: str, api_key: Optional[str] = None) -> None:
         self.base_url = base_url.rstrip("/")
@@ -84,7 +90,7 @@ class TronGridClient:
                 continue
 
             token_info = item.get("token_info") or {}
-            decimals = token_info.get("decimals")
+            decimals = self._resolve_decimals(token_info)
             amount = format_units(item.get("value"), decimals)
             symbol = token_info.get("symbol") or token_info.get("name") or "TRC20"
             from_address = item.get("from", "unknown")
@@ -124,3 +130,25 @@ class TronGridClient:
                 )
             )
         return events
+
+    def _resolve_decimals(self, token_info: dict) -> Optional[int]:
+        contract_address = token_info.get("address")
+        reported = token_info.get("decimals")
+
+        if contract_address in self.KNOWN_TOKEN_DECIMALS:
+            expected = self.KNOWN_TOKEN_DECIMALS[contract_address]
+            if reported not in (None, "", expected, str(expected)):
+                logger.warning(
+                    "Overriding suspicious decimals for %s: reported=%s expected=%s",
+                    contract_address,
+                    reported,
+                    expected,
+                )
+            return expected
+
+        symbol = str(token_info.get("symbol") or "").upper()
+        name = str(token_info.get("name") or "").strip().lower()
+        if symbol == "USDT" and name == "tether usd":
+            return 6
+
+        return reported
