@@ -9,6 +9,7 @@ def build_bot_commands() -> list[BotCommand]:
         BotCommand(command="add", description="добавить адрес"),
         BotCommand(command="list", description="список адресов"),
         BotCommand(command="history", description="История и крупные движения"),
+        BotCommand(command="pattern", description="Похожие кошельки"),
         BotCommand(command="csv", description="CSV 1-100 строк"),
         BotCommand(command="clear", description="Убрать старые уведомления"),
         BotCommand(command="pause", description="Поставить адрес на паузу"),

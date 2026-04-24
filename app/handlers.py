@@ -33,6 +33,7 @@ HELP_TEXT = """
 /add - добавить адрес
 /list - список отслеживаемых адресов
 /history &lt;id|address&gt; - история, суммы и крупные транзакции
+/pattern &lt;id|address&gt; - похожие кошельки среди отслеживаемых
 /csv &lt;id|address&gt; &lt;1-100&gt; - CSV таблица с нужным числом последних транзакций
 /clear - убрать старые уведомления бота
 /remove &lt;id&gt; - удалить адрес
@@ -50,6 +51,7 @@ class AddWatchStates(StatesGroup):
 
 class QuickActionStates(StatesGroup):
     history_reference = State()
+    pattern_reference = State()
     csv_reference = State()
 
 
@@ -168,6 +170,25 @@ def build_router(
             callback.message.chat.id,
             "Пришли <b>номер строки</b>, <b>id</b> или любой адрес <b>TON/TRC20</b> для истории.",
             reply_markup=panel.build_history_markup(),
+        )
+
+    @router.callback_query(F.data == "panel_pattern")
+    async def pattern_callback(callback: CallbackQuery, state: FSMContext) -> None:
+        if not callback.message:
+            await callback.answer()
+            return
+        if not is_allowed(callback.message.chat.id):
+            await callback.answer("Чат не авторизован.", show_alert=True)
+            return
+
+        await state.clear()
+        await state.set_state(QuickActionStates.pattern_reference)
+        await callback.answer()
+        await panel.show(
+            callback.bot,
+            callback.message.chat.id,
+            "Пришли <b>номер строки</b>, <b>id</b> или любой адрес <b>TON/TRC20</b>, чтобы найти похожие кошельки.",
+            reply_markup=panel.build_pattern_markup(),
         )
 
     @router.callback_query(F.data == "panel_csv")
@@ -307,6 +328,39 @@ def build_router(
             reply_markup=panel.build_history_markup(),
         )
 
+    @router.message(QuickActionStates.pattern_reference)
+    async def pattern_reference_handler(message: Message, state: FSMContext) -> None:
+        if await deny_if_needed(message):
+            return
+        await panel.cleanup_user_message(message)
+
+        token = _strip_inline_command_prefix(message.text or "", "pattern")
+        if not token:
+            await show_panel(
+                message,
+                "Пришли <b>номер строки</b>, <b>id</b> или любой адрес <b>TON/TRC20</b>, чтобы найти похожие кошельки.",
+                reply_markup=panel.build_pattern_markup(),
+            )
+            return
+
+        watch = _resolve_watch_reference_or_address(message.chat.id, token, db)
+        if not watch:
+            await show_panel(
+                message,
+                "Не удалось найти кошелек. Пришли номер из <b>/list</b>, внутренний <b>id</b> или любой адрес <b>TON/TRC20</b>.",
+                reply_markup=panel.build_pattern_markup(),
+            )
+            return
+
+        await state.clear()
+        await _send_pattern_report(
+            message=message,
+            watch=watch,
+            history_service=history_service,
+            panel=panel,
+            db=db,
+        )
+
     @router.message(QuickActionStates.csv_reference)
     async def csv_reference_handler(message: Message, state: FSMContext) -> None:
         if await deny_if_needed(message):
@@ -393,6 +447,33 @@ def build_router(
             message,
             history_service.build_history_text(watch, events, recent_count=5),
             reply_markup=panel.build_history_markup(),
+        )
+
+    @router.message(Command("pattern"))
+    async def pattern_handler(message: Message, state: FSMContext, command: CommandObject) -> None:
+        if await deny_if_needed(message):
+            return
+        await panel.cleanup_user_message(message)
+        await state.clear()
+
+        watch = await _resolve_watch_for_command(
+            message=message,
+            db=db,
+            command=command,
+            panel=panel,
+            usage="Используй формат: /pattern <номер из /list, id или адрес>",
+            allow_external_address=True,
+            reply_markup=panel.build_pattern_markup(),
+        )
+        if not watch:
+            return
+
+        await _send_pattern_report(
+            message=message,
+            watch=watch,
+            history_service=history_service,
+            panel=panel,
+            db=db,
         )
 
     @router.message(Command("csv"))
@@ -937,6 +1018,124 @@ def _render_csv_delivery_error(watch: Watch) -> str:
         watch.network,
         html.quote(watch.label),
         html.quote(watch.address),
+    )
+
+
+def _render_pattern_progress(watch: Watch, candidate_count: int, total_candidates: int) -> str:
+    return (
+        "<b><i>Ищу похожие кошельки</i></b>\n"
+        "<i>Цель:</i> <b>{0}</b>\n"
+        "<i>Сравнение:</i> <code>{1}</code> из <code>{2}</code>"
+    ).format(
+        html.quote(watch.label),
+        candidate_count,
+        total_candidates,
+    )
+
+
+def _render_pattern_missing_candidates(watch: Watch) -> str:
+    return (
+        "<b><i>Pattern search</i></b>\n"
+        "<i>Сеть:</i> <code>{0}</code> | <i>Цель:</i> <b>{1}</b>\n"
+        "<code>{2}</code>\n"
+        "<i>Для поиска похожих нужен хотя бы еще один отслеживаемый кошелек той же сети.</i>"
+    ).format(
+        watch.network,
+        html.quote(watch.label),
+        html.quote(watch.address),
+    )
+
+
+def _render_pattern_transport_error(watch: Watch) -> str:
+    return (
+        "<b><i>Pattern search</i></b>\n"
+        "<i>Сеть:</i> <code>{0}</code> | <i>Цель:</i> <b>{1}</b>\n"
+        "<code>{2}</code>\n"
+        "<i>Не удалось собрать профиль кошелька из внешнего API. Попробуй еще раз через несколько секунд.</i>"
+    ).format(
+        watch.network,
+        html.quote(watch.label),
+        html.quote(watch.address),
+    )
+
+
+async def _send_pattern_report(
+    message: Message,
+    watch: Watch,
+    history_service: WalletHistoryService,
+    panel: ChatPanelService,
+    db: Database,
+) -> None:
+    same_network = [
+        candidate
+        for candidate in db.list_watches(message.chat.id)
+        if candidate.network == watch.network and candidate.address != watch.address
+    ]
+    total_candidates = len(same_network)
+    if not total_candidates:
+        await panel.show(
+            message.bot,
+            message.chat.id,
+            _render_pattern_missing_candidates(watch),
+            reply_markup=panel.build_pattern_markup(),
+        )
+        return
+
+    candidates = sorted(same_network, key=lambda item: item.updated_at, reverse=True)[:12]
+    await panel.show(
+        message.bot,
+        message.chat.id,
+        _render_pattern_progress(watch, len(candidates), total_candidates),
+        reply_markup=panel.build_pattern_markup(),
+    )
+
+    try:
+        target_events = await history_service.fetch_recent_events(
+            watch,
+            limit=history_service.PATTERN_SAMPLE_SIZE,
+        )
+        if not target_events:
+            await panel.show(
+                message.bot,
+                message.chat.id,
+                _render_empty_history(watch),
+                reply_markup=panel.build_pattern_markup(),
+            )
+            return
+        matches = await history_service.find_pattern_matches(
+            target_watch=watch,
+            target_events=target_events,
+            candidates=candidates,
+            limit=3,
+        )
+    except aiohttp.ClientResponseError as exc:
+        await panel.show(
+            message.bot,
+            message.chat.id,
+            _render_api_error(watch, exc.status),
+            reply_markup=panel.build_pattern_markup(),
+        )
+        return
+    except (aiohttp.ClientError, asyncio.TimeoutError):
+        logger.exception("Pattern search failed for %s", watch.address)
+        await panel.show(
+            message.bot,
+            message.chat.id,
+            _render_pattern_transport_error(watch),
+            reply_markup=panel.build_pattern_markup(),
+        )
+        return
+
+    await panel.show(
+        message.bot,
+        message.chat.id,
+        history_service.build_pattern_text(
+            target_watch=watch,
+            matches=matches,
+            scanned_count=len(candidates),
+            total_candidates=total_candidates,
+        ),
+        reply_markup=panel.build_pattern_markup(),
     )
 
 

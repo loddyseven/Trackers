@@ -114,6 +114,12 @@ class ChatPanelService:
                         callback_data="panel_csv",
                     ),
                     InlineKeyboardButton(
+                        text="Паттерны",
+                        callback_data="panel_pattern",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
                         text="Список адресов",
                         callback_data="panel_list",
                     ),
@@ -136,6 +142,12 @@ class ChatPanelService:
                         text="История",
                         callback_data="panel_history",
                     ),
+                    InlineKeyboardButton(
+                        text="Паттерны",
+                        callback_data="panel_pattern",
+                    ),
+                ],
+                [
                     InlineKeyboardButton(
                         text="Список адресов",
                         callback_data="panel_list",
@@ -162,6 +174,41 @@ class ChatPanelService:
                     InlineKeyboardButton(
                         text="История",
                         callback_data="panel_history",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="Паттерны",
+                        callback_data="panel_pattern",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="Назад в меню",
+                        callback_data="panel_menu",
+                    ),
+                ],
+            ]
+        )
+
+    @staticmethod
+    def build_pattern_markup() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="История",
+                        callback_data="panel_history",
+                    ),
+                    InlineKeyboardButton(
+                        text="CSV",
+                        callback_data="panel_csv",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="Список адресов",
+                        callback_data="panel_list",
                     ),
                 ],
                 [
